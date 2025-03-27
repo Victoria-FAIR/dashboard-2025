@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard 2025</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-geo@3"></script>
+    <style>
+        :root {
+            --primary-color: #5D5CDE;
+            --secondary-color: #6c63ff;
+            --accent-color: #ff6584;
+            --light-bg: #ffffff;
+            --dark-bg: #181818;
+            --light-text: #333333;
+            --dark-text: #f5f5f5;
+            --light-card: #f8f9fa;
+            --dark-card: #2d2d2d;
+            --light-border: #e2e8f0;
+            --dark-border: #4a4a4a;
+        }
+
+        .dark {
+            --bg-color: var(--dark-bg);
+            --text-color: var(--dark-text);
+            --card-bg: var(--dark-card);
+            --border-color: var(--dark-border);
+        }
+
+        :root:not(.dark) {
+            --bg-color: var(--light-bg);
+            --text-color: var(--light-text);
+            --card-bg: var(--light-card);
+            --border-color: var(--light-border);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+
+        .filter-item {
+            transition: all 0.2s ease;
+        }
+
+        .filter-item:hover {
+            transform: translateY(-2px);
+        }
+
+        .map-tooltip {
+            position: absolute;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 4px;
+            pointer-events: none;
+            font-size: 12px;
+        }
+
+        .department {
+            stroke: var(--bg-color);
+            stroke-width: 0.5;
+            transition: opacity 0.3s;
+        }
+
+        .department:hover {
+            opacity: 0.8;
+            cursor: pointer;
+        }
+
+        /* Animation for loading state */
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+
+        .loading {
+            animation: pulse 1.5s infinite;
+        }
+
+        /* Custom scrollbar for filters */
+        .filter-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .filter-container::-webkit-scrollbar-track {
+            background: var(--card-bg);
+        }
+
+        .filter-container::-webkit-scrollbar-thumb {
+            background-color: var(--primary-color);
+            border-radius: 6px;
+        }
+        
+        /* Category highlighting effect */
+        .highlight-category {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .highlight-category:hover {
+            transform: scale(1.03);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+    </style>
+</head>
+<body class="p-4 md:p-6">
+    <div class="container mx-auto">
+        <!-- Header with title and theme toggle -->
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl md:text-4xl font-bold text-center text-primary-color">Dashboard 2025</h1>
+            <button id="themeToggle" class="p-2 rounded-full bg-gray-200 dark:bg-gray-700">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 dark:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 hidden dark:block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Filters section -->
+        <div class="card p-4 mb-6 rounded-lg shadow-md">
+            <h2 class="text-lg font-semibold mb-2">Filtres</h2>
+            <div class="filter-container flex flex-wrap gap-3 overflow-x-auto pb-2">
+                <!-- Year Range -->
+                <div class="filter-item">
+                    <label for="yearRange" class="block text-sm mb-1">Années: <span id="yearValue">2014-2024</span></label>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs">2014</span>
+                        <input type="range" id="yearRange" min="2014" max="2024" value="2024" class="w-32 md:w-40 accent-primary-color">
+                        <span class="text-xs">2024</span>
+                    </div>
+                </div>
+                
+                <!-- Product Filter -->
+                <div class="filter-item">
+                    <label for="productFilter" class="block text-sm mb-1">Produit</label>
+                    <select id="productFilter" class="w-36 md:w-40 p-1 border rounded text-base bg-white dark:bg-gray-700">
+                        <option value="all">Tous les produits</option>
+                        <option value="product1">Produit A</option>
+                        <option value="product2">Produit B</option>
+                        <option value="product3">Produit C</option>
+                    </select>
+                </div>
+                
+                <!-- Region Filter -->
+                <div class="filter-item">
+                    <label for="regionFilter" class="block text-sm mb-1">Région</label>
+                    <select id="regionFilter" class="w-36 md:w-40 p-1 border rounded text-base bg-white dark:bg-gray-700">
+                        <option value="all">Toutes les régions</option>
+                        <option value="idf">Île-de-France</option>
+                        <option value="pdl">Pays de la Loire</option>
+                        <option value="paca">PACA</option>
+                    </select>
+                </div>
+                
+                <!-- Category Filter -->
+                <div class="filter-item">
+                    <label for="categoryFilter" class="block text-sm mb-1">Catégorie</label>
+                    <select id="categoryFilter" class="w-36 md:w-40 p-1 border rounded text-base bg-white dark:bg-gray-700">
+                        <option value="all">Toutes les catégories</option>
+                        <option value="cat1">Catégorie 1</option>
+                        <option value="cat2">Catégorie 2</option>
+                        <option value="cat3">Catégorie 3</option>
+                        <option value="cat4">Catégorie 4</option>
+                    </select>
+                </div>
+                
+                <!-- Reset Button -->
+                <div class="filter-item flex items-end">
+                    <button id="resetFilters" class="p-1 px-3 bg-primary-color text-white rounded hover:bg-opacity-90 transition">
+                        Réinitialiser
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- First row: Three pie charts -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <!-- First pie chart (4 categories) -->
+            <div class="card p-4 rounded-lg shadow-md highlight-category">
+                <h3 class="text-md font-semibold mb-2">Répartition par Secteur</h3>
+                <div class="h-64 relative">
+                    <canvas id="pieChart1"></canvas>
+                    <div id="pieChart1Legend" class="mt-2 flex flex-wrap justify-center text-xs gap-2"></div>
+                </div>
+            </div>
+            
+            <!-- Second pie chart (10 categories) -->
+            <div class="card p-4 rounded-lg shadow-md highlight-category">
+                <h3 class="text-md font-semibold mb-2">Répartition par Produit</h3>
+                <div class="h-64 relative">
+                    <canvas id="pieChart2"></canvas>
+                    <div id="pieChart2Legend" class="mt-2 flex flex-wrap justify-center text-xs gap-2"></div>
+                </div>
+            </div>
+            
+            <!-- Third pie chart (21 categories) -->
+            <div class="card p-4 rounded-lg shadow-md highlight-category">
+                <h3 class="text-md font-semibold mb-2">Répartition par Région</h3>
+                <div class="h-64 relative">
+                    <canvas id="pieChart3"></canvas>
+                    <div id="pieChart3Legend" class="mt-2 flex flex-wrap justify-center text-xs gap-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Second row: Line chart -->
+        <div class="card p-4 rounded-lg shadow-md mb-6">
+            <h3 class="text-md font-semibold mb-2">Évolution du nombre de souscripteurs (2014-2024)</h3>
+            <div class="h-64 md:h-80 relative">
+                <canvas id="lineChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Third row: France map -->
+        <div class="card p-4 rounded-lg shadow-md">
+            <h3 class="text-md font-semibold mb-2">Répartition géographique des souscripteurs</h3>
+            <div class="flex flex-col md:flex-row gap-4">
+                <div id="mapContainer" class="h-96 w-full relative">
+                    <!-- Map will be inserted here -->
+                </div>
+                <div class="w-full md:w-1/4">
+                    <div class="mb-4">
+                        <h4 class="text-sm font-semibold mb-2">Légende</h4>
+                        <div id="mapLegend" class="flex flex-col gap-1">
+                            <!-- Legend will be generated here -->
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <h4 class="text-sm font-semibold mb-2">Top 5 départements</h4>
+                        <div id="topDepartments" class="text-sm">
+                            <!-- Top departments will be listed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dark mode detection and toggle
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+            // Redraw charts when theme changes
+            updateCharts();
+        });
+        
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+            // Redraw charts when theme changes
+            updateCharts();
+        });
+
+        // Global variables to store original chart data
+        let originalPieData1, originalPieData2, originalPieData3, originalLineData;
+
+        // Sample data generation functions
+        function generatePieData(categories) {
+            const data = [];
+            const labels = [];
+            
+            for (let i = 1; i <= categories; i++) {
+                labels.push(`Catégorie ${i}`);
+                data.push(Math.floor(Math.random() * 100) + 20);
+            }
+            
+            return { labels, data };
+        }
+        
+        function generateLineData() {
+            const years = Array.from({length: 11}, (_, i) => 2014 + i);
+            const subscribers = [120, 150, 180, 250, 300, 450, 600, 750, 900, 1200, 1500].map(
+                base => base + Math.floor(Math.random() * 50)
+            );
+            
+            return { years, subscribers };
+        }
+        
+        function generateDepartmentData() {
+            // This will be replaced with real department codes when we load the map
+            return Array.from({length: 96}, (_, i) => {
+                const code = (i + 1).toString().padStart(2, '0');
+                return {
+                    code: code,
+                    name: `Département ${code}`,
+                    subscribers: Math.floor(Math.random() * 5000) + 100
+                };
+            });
+        }
+
+        // Chart configuration and initialization
+        let pieChart1, pieChart2, pieChart3, lineChart;
+        let departmentData = generateDepartmentData();
+        
+        // Color palettes
+        const colorPalettes = {
+            pie1: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'],
+            pie2: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#8AC249', '#EA5F89', '#00D8B6', '#8B75D7'],
+            pie3: d3.quantize(d3.interpolateRainbow, 21),
+            line: {
+                backgroundColor: 'rgba(93, 92, 222, 0.2)',
+                borderColor: 'rgba(93, 92, 222, 1)'
+            },
+            map: d3.scaleSequential(d3.interpolateRdYlGn).domain([5000, 0])  // Red to green
+        };
+
+        // Function to get chart text color based on theme
+        function getChartTextColor() {
+            return document.documentElement.classList.contains('dark') ? '#f5f5f5' : '#333333';
+        }
+
+        // Initialize charts
+        function initCharts() {
+            // PIE CHART 1 (4 categories)
+            originalPieData1 = generatePieData(4);
+            const pieCtx1 = document.getElementById('pieChart1').getContext('2d');
+            
+            pieChart1 = new Chart(pieCtx1, {
+                type: 'pie',
+                data: {
+                    labels: originalPieData1.labels,
+                    datasets: [{
+                        data: originalPieData1.data,
+                        backgroundColor: colorPalettes.pie1,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const value = context.raw;
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${context.label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Generate custom legend for Pie Chart 1
+            generateCustomLegend('pieChart1Legend', originalPieData1.labels, colorPalettes.pie1);
+            
+            // PIE CHART 2 (10 categories)
+            originalPieData2 = generatePieData(10);
+            const pieCtx2 = document.getElementById('pieChart2').getContext('2d');
+            
+            pieChart2 = new Chart(pieCtx2, {
+                type: 'pie',
+                data: {
+                    labels: originalPieData2.labels,
+                    datasets: [{
+                        data: originalPieData2.data,
+                        backgroundColor: colorPalettes.pie2,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const value = context.raw;
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${context.label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Generate custom legend for Pie Chart 2
+            generateCustomLegend('pieChart2Legend', originalPieData2.labels, colorPalettes.pie2);
+            
+            // PIE CHART 3 (21 categories)
+            originalPieData3 = generatePieData(21);
+            const pieCtx3 = document.getElementById('pieChart3').getContext('2d');
+            
+            pieChart3 = new Chart(pieCtx3, {
+                type: 'pie',
+                data: {
+                    labels: originalPieData3.labels,
+                    datasets: [{
+                        data: originalPieData3.data,
+                        backgroundColor: colorPalettes.pie3,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const value = context.raw;
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${context.label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Generate custom legend for Pie Chart 3
+            generateCustomLegend('pieChart3Legend', originalPieData3.labels, colorPalettes.pie3);
+            
+            // LINE CHART
+            originalLineData = generateLineData();
+            const lineCtx = document.getElementById('lineChart').getContext('2d');
+            
+            lineChart = new Chart(lineCtx, {
+                type: 'line',
+                data: {
+                    labels: originalLineData.years,
+                    datasets: [{
+                        label: 'Nombre de souscripteurs',
+                        data: originalLineData.subscribers,
+                        backgroundColor: colorPalettes.line.backgroundColor,
+                        borderColor: colorPalettes.line.borderColor,
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: document.documentElement.classList.contains('dark') ? 
+                                    'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                            },
+                            ticks: {
+                                color: getChartTextColor()
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: document.documentElement.classList.contains('dark') ? 
+                                    'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                            },
+                            ticks: {
+                                color: getChartTextColor()
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: getChartTextColor()
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Souscripteurs: ${context.raw.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        // Function to create custom legends for pie charts
+        function generateCustomLegend(containerId, labels, colors) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            labels.forEach((label, index) => {
+                const legendItem = document.createElement('div');
+                legendItem.className = 'flex items-center mr-2 mb-1';
+                
+                const colorBox = document.createElement('span');
+                colorBox.className = 'inline-block w-3 h-3 mr-1';
+                colorBox.style.backgroundColor = colors[index];
+                
+                const labelText = document.createElement('span');
+                labelText.textContent = truncateText(label, 10);
+                labelText.title = label; // Show full text on hover
+                
+                legendItem.appendChild(colorBox);
+                legendItem.appendChild(labelText);
+                container.appendChild(legendItem);
+            });
+        }
+        
+        // Helper function to truncate text
+        function truncateText(text, maxLength) {
+            return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+        }
+
+        // Function to update charts based on filters
+        function updateCharts(selectedCategory) {
+            // Update line chart grid and text colors based on theme
+            if (lineChart) {
+                lineChart.options.scales.y.grid.color = document.documentElement.classList.contains('dark') ? 
+                    'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+                lineChart.options.scales.x.grid.color = document.documentElement.classList.contains('dark') ? 
+                    'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+                lineChart.options.scales.y.ticks.color = getChartTextColor();
+                lineChart.options.scales.x.ticks.color = getChartTextColor();
+                lineChart.options.plugins.legend.labels.color = getChartTextColor();
+                lineChart.update();
+            }
+            
+            // If a category is selected, filter the pie charts
+            if (selectedCategory && selectedCategory !== 'all') {
+                filterPieCharts(selectedCategory);
+            } else {
+                // Reset charts to original data when no specific category is selected
+                resetChartData();
+            }
+            
+            // Update map colors
+            if (window.mapInitialized) {
+                updateMapColors(selectedCategory);
+            }
+        }
+
+        // Filter pie charts based on selected category
+        function filterPieCharts(selectedCategory) {
+            const categoryNumber = selectedCategory.replace('cat', '');
+            
+            // Filter first pie chart (4 categories)
+            if (pieChart1) {
+                // Find if the category exists in this chart
+                const categoryIndex = originalPieData1.labels.findIndex(
+                    label => label === `Catégorie ${categoryNumber}`
+                );
+                
+                if (categoryIndex !== -1) {
+                    // If we found the category, only show that slice
+                    const filteredLabels = [originalPieData1.labels[categoryIndex]];
+                    const filteredData = [originalPieData1.data[categoryIndex]];
+                    const filteredColors = [colorPalettes.pie1[categoryIndex]];
+                    
+                    pieChart1.data.labels = filteredLabels;
+                    pieChart1.data.datasets[0].data = filteredData;
+                    pieChart1.data.datasets[0].backgroundColor = filteredColors;
+                    
+                    // Update the legend
+                    generateCustomLegend('pieChart1Legend', filteredLabels, filteredColors);
+                } else {
+                    // Category not in this chart, show empty or "No data" message
+                    pieChart1.data.labels = ['Aucune donnée'];
+                    pieChart1.data.datasets[0].data = [1];
+                    pieChart1.data.datasets[0].backgroundColor = ['#cccccc'];
+                    
+                    // Update the legend
+                    generateCustomLegend('pieChart1Legend', ['Aucune donnée'], ['#cccccc']);
+                }
+                
+                pieChart1.update();
+            }
+            
+            // Filter second pie chart (10 categories) - similar approach
+            if (pieChart2) {
+                const categoryIndex = originalPieData2.labels.findIndex(
+                    label => label === `Catégorie ${categoryNumber}`
+                );
+                
+                if (categoryIndex !== -1) {
+                    const filteredLabels = [originalPieData2.labels[categoryIndex]];
+                    const filteredData = [originalPieData2.data[categoryIndex]];
+                    const filteredColors = [colorPalettes.pie2[categoryIndex]];
+                    
+                    pieChart2.data.labels = filteredLabels;
+                    pieChart2.data.datasets[0].data = filteredData;
+                    pieChart2.data.datasets[0].backgroundColor = filteredColors;
+                    
+                    generateCustomLegend('pieChart2Legend', filteredLabels, filteredColors);
+                } else {
+                    pieChart2.data.labels = ['Aucune donnée'];
+                    pieChart2.data.datasets[0].data = [1];
+                    pieChart2.data.datasets[0].backgroundColor = ['#cccccc'];
+                    
+                    generateCustomLegend('pieChart2Legend', ['Aucune donnée'], ['#cccccc']);
+                }
+                
+                pieChart2.update();
+            }
+            
+            // Filter third pie chart (21 categories) - similar approach
+            if (pieChart3) {
+                const categoryIndex = originalPieData3.labels.findIndex(
+                    label => label === `Catégorie ${categoryNumber}`
+                );
+                
+                if (categoryIndex !== -1) {
+                    const filteredLabels = [originalPieData3.labels[categoryIndex]];
+                    const filteredData = [originalPieData3.data[categoryIndex]];
+                    const filteredColors = [colorPalettes.pie3[categoryIndex]];
+                    
+                    pieChart3.data.labels = filteredLabels;
+                    pieChart3.data.datasets[0].data = filteredData;
+                    pieChart3.data.datasets[0].backgroundColor = filteredColors;
+                    
+                    generateCustomLegend('pieChart3Legend', filteredLabels, filteredColors);
+                } else {
+                    pieChart3.data.labels = ['Aucune donnée'];
+                    pieChart3.data.datasets[0].data = [1];
+                    pieChart3.data.datasets[0].backgroundColor = ['#cccccc'];
+                    
+                    generateCustomLegend('pieChart3Legend', ['Aucune donnée'], ['#cccccc']);
+                }
+                
+                pieChart3.update();
+            }
+            
+            // Highlight the chart cards that contain the selected category
+            highlightRelevantCharts(categoryNumber);
+        }
+        
+        // Function to highlight charts that contain the selected category
+        function highlightRelevantCharts(categoryNumber) {
+            const chartContainers = document.querySelectorAll('.highlight-category');
+            
+            // Reset all chart containers
+            chartContainers.forEach(container => {
+                container.style.boxShadow = '';
+                container.style.borderColor = 'var(--border-color)';
+            });
+            
+            // Check which charts contain the selected category
+            const charts = [
+                { data: originalPieData1, index: 0 },
+                { data: originalPieData2, index: 1 },
+                { data: originalPieData3, index: 2 }
+            ];
+            
+            charts.forEach(chart => {
+                const hasCategory = chart.data.labels.some(
+                    label => label === `Catégorie ${categoryNumber}`
+                );
+                
+                if (hasCategory) {
+                    // Highlight this chart
+                    chartContainers[chart.index].style.boxShadow = '0 0 0 2px var(--primary-color)';
+                    chartContainers[chart.index].style.borderColor = 'var(--primary-color)';
+                }
+            });
+        }
+
+        // Function to reset chart data to original state
+        function resetChartData() {
+            // Reset all chart highlights
+            const chartContainers = document.querySelectorAll('.highlight-category');
+            chartContainers.forEach(container => {
+                container.style.boxShadow = '';
+                container.style.borderColor = 'var(--border-color)';
+            });
+            
+            // Reset pie chart 1
+            if (pieChart1 && originalPieData1) {
+                pieChart1.data.labels = originalPieData1.labels;
+                pieChart1.data.datasets[0].data = originalPieData1.data;
+                pieChart1.data.datasets[0].backgroundColor = colorPalettes.pie1;
+                pieChart1.update();
+                generateCustomLegend('pieChart1Legend', originalPieData1.labels, colorPalettes.pie1);
+            }
+            
+            // Reset pie chart 2
+            if (pieChart2 && originalPieData2) {
+                pieChart2.data.labels = originalPieData2.labels;
+                pieChart2.data.datasets[0].data = originalPieData2.data;
+                pieChart2.data.datasets[0].backgroundColor = colorPalettes.pie2;
+                pieChart2.update();
+                generateCustomLegend('pieChart2Legend', originalPieData2.labels, colorPalettes.pie2);
+            }
+            
+            // Reset pie chart 3
+            if (pieChart3 && originalPieData3) {
+                pieChart3.data.labels = originalPieData3.labels;
+                pieChart3.data.datasets[0].data = originalPieData3.data;
+                pieChart3.data.datasets[0].backgroundColor = colorPalettes.pie3;
+                pieChart3.update();
+                generateCustomLegend('pieChart3Legend', originalPieData3.labels, colorPalettes.pie3);
+            }
+        }
+
+        // Initialize France map with D3.js
+        async function initMap() {
+            // Create tooltip
+            const tooltip = d3.select("#mapContainer")
+                .append("div")
+                .attr("class", "map-tooltip")
+                .style("opacity", 0);
+            
+            // Set up the SVG
+            const container = document.getElementById('mapContainer');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            const svg = d3.select('#mapContainer')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .attr('viewBox', `0 0 ${width} ${height}`)
+                .attr('preserveAspectRatio', 'xMidYMid meet');
+                
+            const g = svg.append('g');
+            
+            // Load France GeoJSON data
+            try {
+                // This URL points to a simplified GeoJSON of French departments
+                const franceUrl = 'https://cdn.jsdelivr.net/npm/france-geojson@1.0.1/departments.geojson';
+                const response = await fetch(franceUrl);
+                const franceData = await response.json();
+                
+                // Set up projection and path
+                const projection = d3.geoMercator()
+                    .center([2.2137, 46.2276]) // Center on France
+                    .scale(width * 2.5)
+                    .translate([width / 2, height / 2]);
+                
+                const path = d3.geoPath().projection(projection);
+                
+                // Update department data with real codes from the GeoJSON
+                departmentData = franceData.features.map(feature => {
+                    const code = feature.properties.code;
+                    return {
+                        code: code,
+                        name: feature.properties.nom,
+                        subscribers: Math.floor(Math.random() * 5000) + 100,
+                        // Add category data for filtering
+                        categoryData: {
+                            cat1: Math.floor(Math.random() * 1000) + 50,
+                            cat2: Math.floor(Math.random() * 1000) + 50,
+                            cat3: Math.floor(Math.random() * 1000) + 50,
+                            cat4: Math.floor(Math.random() * 1000) + 50
+                        }
+                    };
+                });
+                
+                // Sort departments by subscribers for the legend
+                const sortedDepartments = [...departmentData].sort((a, b) => b.subscribers - a.subscribers);
+                const topDepartments = sortedDepartments.slice(0, 5);
+                
+                // Draw departments
+                g.selectAll('path')
+                    .data(franceData.features)
+                    .enter()
+                    .append('path')
+                    .attr('d', path)
+                    .attr('class', 'department')
+                    .attr('id', d => `department-${d.properties.code}`)
+                    .style('fill', d => {
+                        const deptData = departmentData.find(dept => dept.code === d.properties.code);
+                        return deptData ? colorPalettes.map(deptData.subscribers) : '#ccc';
+                    })
+                    .on('mouseover', function(event, d) {
+                        const deptData = departmentData.find(dept => dept.code === d.properties.code);
+                        if (deptData) {
+                            tooltip.transition()
+                                .duration(200)
+                                .style('opacity', .9);
+                                
+                            // Get the selected category from the filter
+                            const selectedCategory = document.getElementById('categoryFilter').value;
+                            let tooltipContent = `
+                                <strong>${deptData.name} (${deptData.code})</strong><br/>
+                                Souscripteurs: ${deptData.subscribers.toLocaleString()}
+                            `;
+                            
+                            // Add category-specific data if a category is selected
+                            if (selectedCategory !== 'all' && deptData.categoryData[selectedCategory]) {
+                                tooltipContent += `<br/>${selectedCategory.replace('cat', 'Catégorie ')}: ${deptData.categoryData[selectedCategory].toLocaleString()}`;
+                            }
+                            
+                            tooltip.html(tooltipContent)
+                                .style('left', (event.pageX - container.offsetLeft + 10) + 'px')
+                                .style('top', (event.pageY - container.offsetTop - 28) + 'px');
+                        }
+                        
+                        d3.select(this)
+                            .style('stroke', 'white')
+                            .style('stroke-width', '2px');
+                    })
+                    .on('mouseout', function() {
+                        tooltip.transition()
+                            .duration(500)
+                            .style('opacity', 0);
+                            
+                        d3.select(this)
+                            .style('stroke-width', '0.5px');
+                    });
+                
+                // Create legend
+                const legendContainer = document.getElementById('mapLegend');
+                legendContainer.innerHTML = '';
+                
+                // Add color gradient legend
+                const gradientValues = [0, 1000, 2000, 3000, 4000, 5000];
+                
+                gradientValues.forEach(value => {
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'flex items-center';
+                    
+                    const colorBox = document.createElement('span');
+                    colorBox.className = 'inline-block w-4 h-4 mr-2';
+                    colorBox.style.backgroundColor = colorPalettes.map(value);
+                    
+                    const labelText = document.createElement('span');
+                    labelText.textContent = value.toLocaleString();
+                    labelText.className = 'text-xs';
+                    
+                    legendItem.appendChild(colorBox);
+                    legendItem.appendChild(labelText);
+                    legendContainer.appendChild(legendItem);
+                });
+                
+                // Add top departments list
+                updateTopDepartments(topDepartments);
+                
+                // Map is initialized successfully
+                window.mapInitialized = true;
+                
+            } catch (error) {
+                console.error('Error loading map data:', error);
+                document.getElementById('mapContainer').innerHTML = `
+                    <div class="flex h-full items-center justify-center">
+                        <p class="text-red-500">Erreur lors du chargement de la carte: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Update top departments list
+        function updateTopDepartments(departments) {
+            const topDeptContainer = document.getElementById('topDepartments');
+            topDeptContainer.innerHTML = '';
+            
+            departments.forEach((dept, index) => {
+                const deptItem = document.createElement('div');
+                deptItem.className = 'flex items-center justify-between mb-1';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = `${index + 1}. ${dept.name} (${dept.code})`;
+                
+                const valueSpan = document.createElement('span');
+                valueSpan.textContent = dept.subscribers.toLocaleString();
+                valueSpan.className = 'font-medium';
+                
+                deptItem.appendChild(nameSpan);
+                deptItem.appendChild(valueSpan);
+                topDeptContainer.appendChild(deptItem);
+            });
+        }
+
+        // Update map colors based on data and filters
+        function updateMapColors(selectedCategory) {
+            if (!window.mapInitialized) return;
+            
+            // Update the map colors based on the selected category
+            d3.selectAll('.department')
+                .style('fill', function() {
+                    const deptId = this.id.replace('department-', '');
+                    const deptData = departmentData.find(dept => dept.code === deptId);
+                    
+                    if (!deptData) return '#ccc';
+                    
+                    // If a category is selected, use its data for coloring
+                    if (selectedCategory && selectedCategory !== 'all' && deptData.categoryData[selectedCategory]) {
+                        return colorPalettes.map(deptData.categoryData[selectedCategory] * 5);  // Multiply for better color contrast
+                    }
+                    
+                    // Otherwise use total subscribers
+                    return colorPalettes.map(deptData.subscribers);
+                });
+                
+            // Also update the top departments list if a category is selected
+            if (selectedCategory && selectedCategory !== 'all') {
+                // Sort departments by the selected category
+                const sortedByCategoryData = [...departmentData]
+                    .sort((a, b) => {
+                        const aValue = a.categoryData[selectedCategory] || 0;
+                        const bValue = b.categoryData[selectedCategory] || 0;
+                        return bValue - aValue;
+                    })
+                    .slice(0, 5);
+                
+                updateTopDepartments(sortedByCategoryData);
+            } else {
+                // Sort by total subscribers
+                const sortedByTotal = [...departmentData]
+                    .sort((a, b) => b.subscribers - a.subscribers)
+                    .slice(0, 5);
+                
+                updateTopDepartments(sortedByTotal);
+            }
+        }
+
+        // Filter event handlers
+        document.getElementById('yearRange').addEventListener('input', function() {
+            document.getElementById('yearValue').textContent = `2014-${this.value}`;
+            updateCharts();
+        });
+        
+        document.getElementById('productFilter').addEventListener('change', updateCharts);
+        document.getElementById('regionFilter').addEventListener('change', updateCharts);
+        
+        document.getElementById('categoryFilter').addEventListener('change', function() {
+            const selectedCategory = this.value;
+            updateCharts(selectedCategory);
+        });
+        
+        document.getElementById('resetFilters').addEventListener('click', function() {
+            // Reset all filters to default values
+            document.getElementById('yearRange').value = 2024;
+            document.getElementById('yearValue').textContent = '2014-2024';
+            document.getElementById('productFilter').value = 'all';
+            document.getElementById('regionFilter').value = 'all';
+            document.getElementById('categoryFilter').value = 'all';
+            
+            // Update charts with reset filters
+            updateCharts();
+        });
+
+        // Initialize everything when the DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+            initMap();
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            // Redraw charts on window resize for responsiveness
+            if (pieChart1) pieChart1.resize();
+            if (pieChart2) pieChart2.resize();
+            if (pieChart3) pieChart3.resize();
+            if (lineChart) lineChart.resize();
+        });
+    </script>
+</body>
+</html>
